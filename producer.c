@@ -66,42 +66,29 @@ rect get_random_rect_within_rect(
 
 // define worker functions
 
-/**
- * Function that layers one image on top of each other, respecting the alpha
- * channel of the second layer as it does so.
- *
- * @param layer1 Base image that layer2 is being placed on top of.
- * @param layer2 Image being placed on top of layer1. layer2 is assumed to have
- * 4 channels (so, an RGBA image, like a PNG with a transparent background.)
- * @param layer2x X-coordinate of the top left corner of the rectangle in which
- * layer2 should be placed.
- * @param layer2y Y-coordinate of the top left corner of the rectangle in which
- * layer2 should be placed.
+/*
+ * Copies the non-completely-transparent contents of `layer` into the data of
+ * `dest`, starting from the top left corner given by top_left_x, top_left_y,
+ * scaling the alpha component of each copied pixel so that the greatest value
+ * it can have is that given by the paramter `alpha`.
  */
-void alpha_composite(image layer1, image layer2, int layer2x, int layer2y)
+void layer_image_with_alpha(image layer, image* dest, int top_left_x,
+    int top_left_y, unsigned char alpha)
 {
-    for (int y = 0; y < layer2.height; y++) {
-        for (int x = 0; x < layer2.width; x++) {
-            unsigned char* source = &layer2.data[(y * layer2.width + x) * 4];
-            double alpha = source[3] / 255.0;
-            int layer1x = x + layer2x;
-            int layer1y = y + layer2y;
-            unsigned char* dest
-                = &layer1.data[(layer1y * layer1.width + layer1x)
-                    * layer1.num_channels];
-            for (int c = 0; c < 3; c++) {
-                unsigned char value
-                    = (dest[c] * (1 - alpha) + source[c] * alpha);
-                dest[c] = value;
+    for (int y = 0; y < layer.height; y++) {
+        for (int x = 0; x < layer.width; x++) {
+            unsigned char* source = &layer.data[(y * layer.width + x) * 4];
+            if (source[3] == 0) {
+                continue;
             }
-            if (layer1.num_channels == 4) {
-                int newAlpha = dest[3] + source[3];
-                if (newAlpha > 255) {
-                    source[3] = 255;
-                } else {
-                    source[3] = newAlpha;
-                }
+            int destx = x + top_left_x;
+            int desty = y + top_left_y;
+            unsigned char* dest_pos
+                = &dest->data[(desty * dest->width + destx) * 4];
+            for (int i = 0; i < 3; i++) {
+                dest_pos[i] = source[i];
             }
+            dest_pos[3] = alpha * (source[3] / 255.0);
         }
     }
 }
@@ -160,10 +147,12 @@ int main()
     // basic test: add one sparkle
 
     printf("adding sparkle\n");
-    alpha_composite(base, sparkle, 50, 50);
+    image dest = { base.width, base.height, 4,
+        calloc(base.width * base.height * 4, 1) };
+    layer_image_with_alpha(sparkle, &dest, 50, 50, 100);
     printf("writing new file\n");
-    if (!stbi_write_png("./result.png", base.width, base.height,
-            base.num_channels, base.data, base.width * base.num_channels)) {
+    if (!stbi_write_png("./result.png", dest.width, dest.height,
+            dest.num_channels, dest.data, dest.width * dest.num_channels)) {
         printf("could not write file\n");
     }
 
